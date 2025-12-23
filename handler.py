@@ -41,6 +41,26 @@ def convert_audio_to_wav(input_path: str, output_path: str) -> bool:
         return False
 
 
+def create_inference_config(image_path: str, audio_path: str, config_path: str, bbox_shift: int = 0) -> bool:
+    """Create MuseTalk inference config YAML file"""
+    try:
+        import yaml
+        config = {
+            'task_0': {
+                'video_path': image_path,
+                'audio_path': audio_path,
+                'bbox_shift': bbox_shift
+            }
+        }
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False)
+        print(f"Created config: {config}")
+        return True
+    except Exception as e:
+        print(f"Config creation error: {e}")
+        return False
+
+
 def run_musetalk_inference(image_path: str, audio_path: str, output_path: str,
                            bbox_shift: int = 0,
                            extra_margin: int = 10,
@@ -64,14 +84,17 @@ def run_musetalk_inference(image_path: str, audio_path: str, output_path: str,
         output_dir = os.path.dirname(output_path)
         os.makedirs(output_dir, exist_ok=True)
 
-        # MuseTalk inference command
+        # Create dynamic config file for MuseTalk
+        config_path = os.path.join(os.path.dirname(image_path), 'inference_config.yaml')
+        if not create_inference_config(image_path, wav_path, config_path, bbox_shift):
+            print("Failed to create inference config")
+            return False
+
+        # MuseTalk inference command - uses config file for inputs
         cmd = [
             'python', '-m', 'scripts.inference',
-            '--inference_config', 'configs/inference/test_img.yaml',
-            '--source_image', image_path,
-            '--driving_audio', wav_path,
+            '--inference_config', config_path,
             '--result_dir', output_dir,
-            '--bbox_shift', str(bbox_shift),
             '--extra_margin', str(extra_margin),
             '--fps', str(fps),
             '--batch_size', str(batch_size),
@@ -79,7 +102,7 @@ def run_musetalk_inference(image_path: str, audio_path: str, output_path: str,
             '--left_cheek_width', str(left_cheek_width),
             '--right_cheek_width', str(right_cheek_width),
             '--version', version,
-            '--use_float16',  # Faster inference
+            '--use_float16',
         ]
 
         print(f"Running MuseTalk: {' '.join(cmd)}")
@@ -101,15 +124,16 @@ def run_musetalk_inference(image_path: str, audio_path: str, output_path: str,
             print(f"MuseTalk STDERR: {result.stderr[-2000:]}")
             return False
 
-        # Find output video
-        for f in os.listdir(output_dir):
-            if f.endswith('.mp4'):
-                found_output = os.path.join(output_dir, f)
-                if found_output != output_path:
-                    shutil.move(found_output, output_path)
-                break
+        # Find output video - MuseTalk creates in subdirectories
+        for root, dirs, files in os.walk(output_dir):
+            for f in files:
+                if f.endswith('.mp4'):
+                    found_output = os.path.join(root, f)
+                    if found_output != output_path:
+                        shutil.move(found_output, output_path)
+                    return os.path.exists(output_path) and os.path.getsize(output_path) > 10000
 
-        return os.path.exists(output_path) and os.path.getsize(output_path) > 10000
+        return False
 
     except subprocess.TimeoutExpired:
         print("MuseTalk timeout!")
