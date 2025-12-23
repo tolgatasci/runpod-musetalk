@@ -35,9 +35,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     mim install "mmdet==3.1.0" && \
     mim install "mmpose==1.1.0"
 
-# Install RunPod
+# Install RunPod and PyYAML for config generation
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install runpod requests
+    pip install runpod requests pyyaml
 
 # Create models directory structure
 RUN mkdir -p models/musetalk models/musetalkV15 models/dwpose models/face-parse-bisenet models/sd-vae models/whisper models/syncnet
